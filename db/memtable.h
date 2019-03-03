@@ -162,6 +162,9 @@ class MemTable {
   FragmentedRangeTombstoneIterator* NewRangeTombstoneIterator(
       const ReadOptions& read_options, SequenceNumber read_seq);
 
+std::shared_ptr<FragmentedRangeTombstoneIterator> GetRangeTombstoneIterator(
+    const ReadOptions& read_options, SequenceNumber read_seq);
+
   // Add an entry into memtable that maps key to value at the
   // specified sequence number and with the specified type.
   // Typically value will be empty if type==kTypeDeletion.
@@ -470,6 +473,8 @@ class MemTable {
   // Timestamp of oldest key
   std::atomic<uint64_t> oldest_key_time_;
 
+  std::shared_ptr<FragmentedRangeTombstoneList> fragmented_tombstone_list;
+
   // Memtable id to track flush.
   uint64_t id_ = 0;
 
@@ -486,6 +491,8 @@ class MemTable {
   void UpdateFlushState();
 
   void UpdateOldestKeyTime();
+
+  void RebuildFragmentedTombstones(const ReadOptions& read_options);
 
   // No copying allowed
   MemTable(const MemTable&);

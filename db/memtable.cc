@@ -416,21 +416,30 @@ InternalIterator* MemTable::NewIterator(const ReadOptions& read_options,
   return new (mem) MemTableIterator(*this, read_options, arena);
 }
 
+void MemTable::RebuildFragmentedTombstones(const ReadOptions& read_options) {
+  auto* unfragmented_iter = new MemTableIterator(
+      *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
+  if (unfragmented_iter == nullptr) {
+    //throw("tombstone iterator could not be created");
+    return; //BAD
+  }
+  fragmented_tombstone_list =
+      std::make_shared<FragmentedRangeTombstoneList>(
+          std::unique_ptr<InternalIterator>(unfragmented_iter),
+          comparator_.comparator);
+}
+
 FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
     const ReadOptions& read_options, SequenceNumber read_seq) {
+
   if (read_options.ignore_range_deletions ||
       is_range_del_table_empty_.load(std::memory_order_relaxed)) {
     return nullptr;
   }
-  auto* unfragmented_iter = new MemTableIterator(
-      *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
-  if (unfragmented_iter == nullptr) {
-    return nullptr;
+
+  if (fragmented_tombstone_list == nullptr) {
+    RebuildFragmentedTombstones(read_options);
   }
-  auto fragmented_tombstone_list =
-      std::make_shared<FragmentedRangeTombstoneList>(
-          std::unique_ptr<InternalIterator>(unfragmented_iter),
-          comparator_.comparator);
 
   auto* fragmented_iter = new FragmentedRangeTombstoneIterator(
       fragmented_tombstone_list, comparator_.comparator, read_seq);
@@ -574,6 +583,8 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
   }
   if (type == kTypeRangeDeletion) {
     is_range_del_table_empty_.store(false, std::memory_order_relaxed);
+
+    RebuildFragmentedTombstones(ReadOptions());
   }
   UpdateOldestKeyTime();
   return true;
@@ -753,8 +764,9 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
   PERF_TIMER_GUARD(get_from_memtable_time);
 
   std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
-      NewRangeTombstoneIterator(read_opts,
-                                GetInternalKeySeqno(key.internal_key())));
+		  NewRangeTombstoneIterator(read_opts,
+		  GetInternalKeySeqno(key.internal_key())));
+
   if (range_del_iter != nullptr) {
     *max_covering_tombstone_seq =
         std::max(*max_covering_tombstone_seq,
