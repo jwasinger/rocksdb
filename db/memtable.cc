@@ -420,8 +420,7 @@ void MemTable::RebuildFragmentedTombstones(const ReadOptions& read_options) {
   auto* unfragmented_iter = new MemTableIterator(
       *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
   if (unfragmented_iter == nullptr) {
-    //throw("tombstone iterator could not be created");
-    return; //BAD
+    return;
   }
   fragmented_tombstone_list =
       std::make_shared<FragmentedRangeTombstoneList>(
