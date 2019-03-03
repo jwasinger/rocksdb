@@ -438,6 +438,9 @@ FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
 
   if (fragmented_tombstone_list == nullptr) {
     RebuildFragmentedTombstones(read_options);
+    if (fragmented_tombstone_list == nullptr) {
+      return nullptr;
+    }
   }
 
   auto* fragmented_iter = new FragmentedRangeTombstoneIterator(
