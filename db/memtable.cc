@@ -106,7 +106,10 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
       insert_with_hint_prefix_extractor_(
           ioptions.memtable_insert_with_hint_prefix_extractor),
       oldest_key_time_(std::numeric_limits<uint64_t>::max()),
-      atomic_flush_seqno_(kMaxSequenceNumber) {
+      atomic_flush_seqno_(kMaxSequenceNumber),
+      last_range_del_seqno(0),
+      fragmented_tombstones_invalidated(false), 
+      fragmented_tombstones_list(nullptr) {
   UpdateFlushState();
   // something went wrong if we need to flush before inserting anything
   assert(!ShouldScheduleFlush());
