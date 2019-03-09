@@ -419,32 +419,35 @@ InternalIterator* MemTable::NewIterator(const ReadOptions& read_options,
 void MemTable::RebuildFragmentedTombstones(const ReadOptions& read_options) {
   auto* unfragmented_iter = new MemTableIterator(
       *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
-  if (unfragmented_iter == nullptr) {
-    return;
-  }
-  fragmented_tombstone_list =
-      std::make_shared<FragmentedRangeTombstoneList>(
+
+  if (fragmented_tombstones_invalidated) {
+    if (unfragmented_iter == nullptr) {
+      fragmented_tombstones_list = nullptr;
+    } else {
+      fragmented_tombstones_list =
+        std::make_shared<FragmentedRangeTombstoneList>(
           std::unique_ptr<InternalIterator>(unfragmented_iter),
           comparator_.comparator);
+    }
+
+    fragmented_tombstones_invalidated = false;
+  }
 }
 
 FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
     const ReadOptions& read_options, SequenceNumber read_seq) {
-
+  FragmentedRangeTombstoneIterator* fragmented_iter = nullptr;
   if (read_options.ignore_range_deletions ||
       is_range_del_table_empty_.load(std::memory_order_relaxed)) {
     return nullptr;
   }
-
-  if (fragmented_tombstone_list == nullptr) {
-    RebuildFragmentedTombstones(read_options);
-    if (fragmented_tombstone_list == nullptr) {
-      return nullptr;
-    }
+  fragmented_tombstones_mut.Lock();
+  RebuildFragmentedTombstones(ReadOptions());
+  if (fragmented_tombstones_list != nullptr) {
+    fragmented_iter = new FragmentedRangeTombstoneIterator(
+        fragmented_tombstones_list, comparator_.comparator, read_seq);
   }
-
-  auto* fragmented_iter = new FragmentedRangeTombstoneIterator(
-      fragmented_tombstone_list, comparator_.comparator, read_seq);
+  fragmented_tombstones_mut.Unlock();
   return fragmented_iter;
 }
 
@@ -584,9 +587,14 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
     }
   }
   if (type == kTypeRangeDeletion) {
-    is_range_del_table_empty_.store(false, std::memory_order_relaxed);
+    fragmented_tombstones_mut.Lock();
+    if (s > last_range_del_seqno) {
+      last_range_del_seqno = s;
+      fragmented_tombstones_invalidated = true;
+    }
+    fragmented_tombstones_mut.Unlock();
 
-    RebuildFragmentedTombstones(ReadOptions());
+    is_range_del_table_empty_.store(false, std::memory_order_relaxed);
   }
   UpdateOldestKeyTime();
   return true;
@@ -766,8 +774,8 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
   PERF_TIMER_GUARD(get_from_memtable_time);
 
   std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
-		  NewRangeTombstoneIterator(read_opts,
-		  GetInternalKeySeqno(key.internal_key())));
+    NewRangeTombstoneIterator(read_opts,
+    GetInternalKeySeqno(key.internal_key())));
 
   if (range_del_iter != nullptr) {
     *max_covering_tombstone_seq =

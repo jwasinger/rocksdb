@@ -473,8 +473,6 @@ std::shared_ptr<FragmentedRangeTombstoneIterator> GetRangeTombstoneIterator(
   // Timestamp of oldest key
   std::atomic<uint64_t> oldest_key_time_;
 
-  std::shared_ptr<FragmentedRangeTombstoneList> fragmented_tombstone_list;
-
   // Memtable id to track flush.
   uint64_t id_ = 0;
 
@@ -484,6 +482,13 @@ std::shared_ptr<FragmentedRangeTombstoneIterator> GetRangeTombstoneIterator(
   // writes with sequence number smaller than seq are flushed.
   SequenceNumber atomic_flush_seqno_;
 
+  SequenceNumber last_range_del_seqno;
+  bool fragmented_tombstones_invalidated;
+  port::Mutex fragmented_tombstones_mut;
+  std::shared_ptr<FragmentedRangeTombstoneList> fragmented_tombstones_list;
+
+  void RebuildFragmentedTombstones(const ReadOptions& read_options);
+
   // Returns a heuristic flush decision
   bool ShouldFlushNow() const;
 
@@ -491,8 +496,6 @@ std::shared_ptr<FragmentedRangeTombstoneIterator> GetRangeTombstoneIterator(
   void UpdateFlushState();
 
   void UpdateOldestKeyTime();
-
-  void RebuildFragmentedTombstones(const ReadOptions& read_options);
 
   // No copying allowed
   MemTable(const MemTable&);
