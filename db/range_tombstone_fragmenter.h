@@ -62,7 +62,7 @@ struct FragmentedRangeTombstoneList {
     return tombstone_seqs_.end();
   }
 
-  std::uint32_t size() const { return tombstones_.size(); }
+  unsigned long size() const { return tombstones_.size(); }
 
   bool empty() const { return tombstones_.empty(); }
 
