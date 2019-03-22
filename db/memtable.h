@@ -482,8 +482,6 @@ std::shared_ptr<FragmentedRangeTombstoneIterator> GetRangeTombstoneIterator(
   // writes with sequence number smaller than seq are flushed.
   SequenceNumber atomic_flush_seqno_;
 
-  SequenceNumber last_range_del_seqno;
-  bool fragmented_tombstones_invalidated;
   port::Mutex fragmented_tombstones_mut;
   std::shared_ptr<FragmentedRangeTombstoneList> fragmented_tombstones_list;
 

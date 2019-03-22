@@ -62,6 +62,8 @@ struct FragmentedRangeTombstoneList {
     return tombstone_seqs_.end();
   }
 
+  uint size() const { return tombstones_.size(); }
+
   bool empty() const { return tombstones_.empty(); }
 
   // Returns true if the stored tombstones contain with one with a sequence
