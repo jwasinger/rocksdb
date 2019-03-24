@@ -162,9 +162,6 @@ class MemTable {
   FragmentedRangeTombstoneIterator* NewRangeTombstoneIterator(
       const ReadOptions& read_options, SequenceNumber read_seq);
 
-std::shared_ptr<FragmentedRangeTombstoneIterator> GetRangeTombstoneIterator(
-    const ReadOptions& read_options, SequenceNumber read_seq);
-
   // Add an entry into memtable that maps key to value at the
   // specified sequence number and with the specified type.
   // Typically value will be empty if type==kTypeDeletion.
