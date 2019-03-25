@@ -418,17 +418,17 @@ InternalIterator* MemTable::NewIterator(const ReadOptions& read_options,
 }
 
 void MemTable::RebuildFragmentedTombstones(const ReadOptions& read_options) {
-  auto* unfragmented_iter = new MemTableIterator(
+  MemTableIterator* unfragmented_iter = nullptr;
+
+  if (fragmented_tombstones_list == nullptr) {
+    unfragmented_iter = new MemTableIterator(
       *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
 
-  if (unfragmented_iter != nullptr) {
-    auto new_fragmented_tombstones_list =
-      std::make_shared<FragmentedRangeTombstoneList>(
-        std::unique_ptr<InternalIterator>(unfragmented_iter),
-        comparator_.comparator);
-
-    if (fragmented_tombstones_list == nullptr || new_fragmented_tombstones_list->size() > fragmented_tombstones_list->size()) {
-      fragmented_tombstones_list = new_fragmented_tombstones_list;
+    if (unfragmented_iter != nullptr) {
+      fragmented_tombstones_list =
+        std::make_shared<FragmentedRangeTombstoneList>(
+          std::unique_ptr<InternalIterator>(unfragmented_iter),
+          comparator_.comparator);
     }
   }
 }
