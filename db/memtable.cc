@@ -770,9 +770,8 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
   PERF_TIMER_GUARD(get_from_memtable_time);
 
   std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
-    NewRangeTombstoneIterator(read_opts,
-                              GetInternalKeySeqno(key.internal_key())));
-
+      NewRangeTombstoneIterator(read_opts,
+                                GetInternalKeySeqno(key.internal_key())));
   if (range_del_iter != nullptr) {
     *max_covering_tombstone_seq =
         std::max(*max_covering_tombstone_seq,
