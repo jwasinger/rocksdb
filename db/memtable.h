@@ -63,6 +63,11 @@ struct MemTablePostProcessInfo {
   uint64_t num_deletes = 0;
 };
 
+struct TombstoneFragments {
+  std::shared_ptr<FragmentedRangeTombstoneList> fragmented_tombstone_list = nullptr;
+  std::atomic<uint64_t> tombstone_sequence_number = 0;
+}
+
 // Note:  Many of the methods in this class have comments indicating that
 // external synchronization is required as these methods are not thread-safe.
 // It is up to higher layers of code to decide how to prevent concurrent
