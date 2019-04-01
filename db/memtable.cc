@@ -454,11 +454,13 @@ FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
     return nullptr;
   }
 
+  // ensure that the fragmented tombstones, if invalidated, are only regenerated once
   for (;;) {
     if (fragmented_tombstones.fragmented_tombstone_list != nullptr) {
       break;
     }
 
+    // possible to only use fragmente_tombstones_list here and exchange (comparing nullptr instead of bool)?
     bool old = fragmented_tombstones.initialized.exchange(true);
     if (!old) {
       unfragmented_iter = new MemTableIterator(
@@ -471,6 +473,9 @@ FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
             comparator_.comparator);
       }
     }
+
+    // if execution reaches here, then another thread (reading) is rebuilding
+    // the fragmented tombstones so we spin until they are available
   }
 
   if (fragmented_tombstones_list != nullptr) {
