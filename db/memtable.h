@@ -479,8 +479,8 @@ class MemTable {
   // writes with sequence number smaller than seq are flushed.
   SequenceNumber atomic_flush_seqno_;
 
-  port::Mutex fragmented_tombstones_mut;
   std::shared_ptr<FragmentedRangeTombstoneList> fragmented_tombstones_list;
+  std::atomic<uint64_t> range_tombstone_count;
 
   void RebuildFragmentedTombstones(const ReadOptions& read_options);
 
