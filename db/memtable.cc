@@ -107,7 +107,10 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
           ioptions.memtable_insert_with_hint_prefix_extractor),
       oldest_key_time_(std::numeric_limits<uint64_t>::max()),
       atomic_flush_seqno_(kMaxSequenceNumber),
-      fragmented_tombstones_list(nullptr),
+      fragmented_tombstones(FragmentedTombstones {
+        nullptr,
+        false
+      }),
       range_tombstone_count(0) {
   UpdateFlushState();
   // something went wrong if we need to flush before inserting anything
@@ -419,68 +422,62 @@ InternalIterator* MemTable::NewIterator(const ReadOptions& read_options,
 }
 
 void MemTable::InvalidateFragmentedTombstones() {
-  MemTableIterator* unfragmented_iter = nullptr;
+    auto new_range_tombstone_count = range_tombstone_count++;
 
-/*
-  if (fragmented_tombstones_list == nullptr) {
-    unfragmented_iter = new MemTableIterator(
-      *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
-
-    if (unfragmented_iter != nullptr) {
-      fragmented_tombstones_list =
-        std::make_shared<FragmentedRangeTombstoneList>(
-          std::unique_ptr<InternalIterator>(unfragmented_iter),
-          comparator_.comparator);
-    }
-  }
-*/
-  auto new_range_tombstone_count = range_tombstone_count++;
-
-  if (new_range_tombstone_count > range_tombstone_count) {
+  if (new_range_tombstone_count <= range_tombstone_count) {
     // we have been preempted, don't invalidate fragmented tombstones
     return;
   }
 
-  // can we be preempted here (potentially losing tombstone fragments)?
-
-  fragmented_tombstones_list = nullptr;
+  // assignment here is atomic right?
+  fragmented_tombstones = FragmentedTombstones {
+    nullptr,
+    false
+  };
 }
 
 FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
     const ReadOptions& read_options, SequenceNumber read_seq) {
   FragmentedRangeTombstoneIterator* fragmented_iter = nullptr;
+  MemTableIterator* unfragmented_iter = nullptr;
+
+  // store these here in case they are invalidated during this function call
+  auto tombstones = fragmented_tombstones;
+
   if (read_options.ignore_range_deletions ||
       is_range_del_table_empty_.load(std::memory_order_relaxed)) {
     return nullptr;
   }
 
-  // ensure that the fragmented tombstones, if invalidated, are only regenerated once
-  for (;;) {
-    if (fragmented_tombstones.fragmented_tombstone_list != nullptr) {
-      break;
-    }
+  if (!tombstones.initiate_flag) {
+    for (;;) {
+      bool changed = fragmented_tombstones.initiate_flag.compare_exchange_weak(false, true,
+                       std::memory_order_release,
+                       std::memory_order_relaxed);
 
-    // possible to only use fragmente_tombstones_list here and exchange (comparing nullptr instead of bool)?
-    bool old = fragmented_tombstones.initialized.exchange(true);
-    if (!old) {
-      unfragmented_iter = new MemTableIterator(
-        *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
+      if (changed) {
+        // rebuild the fragmented tombstones here
 
-       if (unfragmented_iter != nullptr) {
-        fragmented_tombstones.fragmented_tombstones_list =
-          std::make_shared<FragmentedRangeTombstoneList>(
-            std::unique_ptr<InternalIterator>(unfragmented_iter),
-            comparator_.comparator);
+        unfragmented_iter = new MemTableIterator(
+          *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
+
+         if (unfragmented_iter != nullptr) {
+          tombstones.fragmented_tombstones_list =
+            std::make_shared<FragmentedRangeTombstoneList>(
+              std::unique_ptr<InternalIterator>(unfragmented_iter),
+              comparator_.comparator);
+        }
+      } else if (fragmented_tombstones.fragmented_tombstones_list != nullptr) {
+        break;
       }
-    }
 
-    // if execution reaches here, then another thread (reading) is rebuilding
-    // the fragmented tombstones so we spin until they are available
+      // fragmented tombstones are rebuilding, spin until they're done
+    }
   }
 
-  if (fragmented_tombstones_list != nullptr) {
+  if (tombstones->fragmented_tombstones_list != nullptr) {
     fragmented_iter = new FragmentedRangeTombstoneIterator(
-        fragmented_tombstones_list, comparator_.comparator, read_seq);
+        tombstones->fragmented_tombstones_list, comparator_.comparator, read_seq);
   }
   return fragmented_iter;
 }

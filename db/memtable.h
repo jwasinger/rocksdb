@@ -63,6 +63,11 @@ struct MemTablePostProcessInfo {
   uint64_t num_deletes = 0;
 };
 
+struct FragmentedTombstones {
+  std::shared_ptr<FragmentedTombstoneList> fragmented_tombstone_list;  
+  std::atomic_bool initiate_flag;
+}
+
 // Note:  Many of the methods in this class have comments indicating that
 // external synchronization is required as these methods are not thread-safe.
 // It is up to higher layers of code to decide how to prevent concurrent
@@ -479,7 +484,7 @@ class MemTable {
   // writes with sequence number smaller than seq are flushed.
   SequenceNumber atomic_flush_seqno_;
 
-  std::shared_ptr<FragmentedRangeTombstoneList> fragmented_tombstones_list;
+  std::atomic<std::shared_ptr<FragmentedTombstones>> fragmented_tombstones;
   std::atomic<uint64_t> range_tombstone_count;
 
   void RebuildFragmentedTombstones(const ReadOptions& read_options);
