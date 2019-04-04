@@ -107,10 +107,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
           ioptions.memtable_insert_with_hint_prefix_extractor),
       oldest_key_time_(std::numeric_limits<uint64_t>::max()),
       atomic_flush_seqno_(kMaxSequenceNumber),
-      fragmented_tombstones(FragmentedTombstones {
-        nullptr,
-        false
-      }),
+      fragmented_tombstones(std::make_shared<FragmentedTombstones>(new FragmentedTombstones)),
       range_tombstone_count(0) {
   UpdateFlushState();
   // something went wrong if we need to flush before inserting anything
@@ -430,10 +427,7 @@ void MemTable::InvalidateFragmentedTombstones() {
   }
 
   // assignment here is atomic right?
-  fragmented_tombstones = FragmentedTombstones {
-    nullptr,
-    false
-  };
+  fragmented_tombstones = std::make_shared<FragmentedTombstones>(new FragmentedTombstones);
 }
 
 FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
@@ -449,12 +443,9 @@ FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
     return nullptr;
   }
 
-  if (!tombstones.initiate_flag) {
+  if (!tombstones->initiate_flag) {
+    bool changed = !tombstones->initiate_flag.exchange(true);
     for (;;) {
-      bool changed = fragmented_tombstones.initiate_flag.compare_exchange_weak(false, true,
-                       std::memory_order_release,
-                       std::memory_order_relaxed);
-
       if (changed) {
         // rebuild the fragmented tombstones here
 
@@ -462,12 +453,12 @@ FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
           *this, read_options, nullptr /* arena */, true /* use_range_del_table */);
 
          if (unfragmented_iter != nullptr) {
-          tombstones.fragmented_tombstones_list =
-            std::make_shared<FragmentedRangeTombstoneList>(
-              std::unique_ptr<InternalIterator>(unfragmented_iter),
-              comparator_.comparator);
+           tombstones->fragmented_tombstones_list =
+             std::make_shared<FragmentedRangeTombstoneList>(
+               std::unique_ptr<InternalIterator>(unfragmented_iter),
+               comparator_.comparator);
         }
-      } else if (fragmented_tombstones.fragmented_tombstones_list != nullptr) {
+      } else if (tombstones->fragmented_tombstones_list != nullptr) {
         break;
       }
 

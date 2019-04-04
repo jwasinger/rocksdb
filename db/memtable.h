@@ -64,9 +64,16 @@ struct MemTablePostProcessInfo {
 };
 
 struct FragmentedTombstones {
-  std::shared_ptr<FragmentedTombstoneList> fragmented_tombstone_list;  
-  std::atomic_bool initiate_flag;
-}
+public:
+  std::shared_ptr<FragmentedRangeTombstoneList> fragmented_tombstones_list = nullptr;
+  std::atomic_bool initiate_flag = {0};
+
+  FragmentedTombstones() {}
+  FragmentedTombstones(FragmentedTombstones *f) noexcept {
+    initiate_flag = {f->initiate_flag.load()};
+    fragmented_tombstones_list = f->fragmented_tombstones_list; // how to deep copy here?
+  }
+};
 
 // Note:  Many of the methods in this class have comments indicating that
 // external synchronization is required as these methods are not thread-safe.
@@ -484,10 +491,10 @@ class MemTable {
   // writes with sequence number smaller than seq are flushed.
   SequenceNumber atomic_flush_seqno_;
 
-  std::atomic<std::shared_ptr<FragmentedTombstones>> fragmented_tombstones;
+  std::shared_ptr<FragmentedTombstones> fragmented_tombstones;
   std::atomic<uint64_t> range_tombstone_count;
 
-  void RebuildFragmentedTombstones(const ReadOptions& read_options);
+  void InvalidateFragmentedTombstones();
 
   // Returns a heuristic flush decision
   bool ShouldFlushNow() const;
